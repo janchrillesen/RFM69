@@ -440,8 +440,10 @@ void RFM69::writeReg(uint8_t addr, uint8_t value)
 void RFM69::select() {
   noInterrupts();
   // save current SPI settings
-  _SPCR = SPCR;
-  _SPSR = SPSR;
+  if !defined(ESP8266)
+    _SPCR = SPCR;
+    _SPSR = SPSR;
+  #endif
   // set RFM69 SPI settings
   SPI.setDataMode(SPI_MODE0);
   SPI.setBitOrder(MSBFIRST);
@@ -453,8 +455,10 @@ void RFM69::select() {
 void RFM69::unselect() {
   digitalWrite(_slaveSelectPin, HIGH);
   // restore SPI settings to what they were before talking to RFM69
-  SPCR = _SPCR;
-  SPSR = _SPSR;
+  if !defined(ESP8266)
+    SPCR = _SPCR;
+    SPSR = _SPSR;
+  #endif
   interrupts();
 }
 
