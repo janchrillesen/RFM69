@@ -91,7 +91,8 @@ bool RFM69::initialize(uint8_t freqBand, uint8_t nodeID, uint8_t networkID)
   pinMode(_slaveSelectPin, OUTPUT);
   SPI.begin();
   unsigned long start = millis();
-  uint8_t timeout = 50;
+  // MySensors forum suggesst 100 ms instead of the original 50 ms
+  uint8_t timeout = 100;
   do writeReg(REG_SYNCVALUE1, 0xAA); while (readReg(REG_SYNCVALUE1) != 0xaa && millis()-start < timeout);
   start = millis();
   do writeReg(REG_SYNCVALUE1, 0x55); while (readReg(REG_SYNCVALUE1) != 0x55 && millis()-start < timeout);
@@ -219,7 +220,10 @@ void RFM69::send(uint8_t toAddress, const void* buffer, uint8_t bufferSize, bool
 {
   writeReg(REG_PACKETCONFIG2, (readReg(REG_PACKETCONFIG2) & 0xFB) | RF_PACKET2_RXRESTART); // avoid RX deadlocks
   uint32_t now = millis();
-  while (!canSend() && millis() - now < RF69_CSMA_LIMIT_MS) receiveDone();
+  while (!canSend() && millis() - now < RF69_CSMA_LIMIT_MS) {
+    receiveDone();
+    yield();
+  }
   sendFrame(toAddress, buffer, bufferSize, requestACK, false);
 }
 
@@ -239,7 +243,7 @@ bool RFM69::sendWithRetry(uint8_t toAddress, const void* buffer, uint8_t bufferS
     {
       if (ACKReceived(toAddress))
       {
-        //Serial.print(" ~ms:"); Serial.print(millis() - sentTime);
+        Serial.print(" ~ms:"); Serial.print(millis() - sentTime);
         return true;
       }
     }
@@ -267,7 +271,10 @@ void RFM69::sendACK(const void* buffer, uint8_t bufferSize) {
   int16_t _RSSI = RSSI; // save payload received RSSI value
   writeReg(REG_PACKETCONFIG2, (readReg(REG_PACKETCONFIG2) & 0xFB) | RF_PACKET2_RXRESTART); // avoid RX deadlocks
   uint32_t now = millis();
-  while (!canSend() && millis() - now < RF69_CSMA_LIMIT_MS) receiveDone();
+  while (!canSend() && millis() - now < RF69_CSMA_LIMIT_MS) {
+    receiveDone();
+    yield();
+  }
   sendFrame(sender, buffer, bufferSize, false, true);
   RSSI = _RSSI; // restore payload RSSI
 }
@@ -298,12 +305,15 @@ void RFM69::sendFrame(uint8_t toAddress, const void* buffer, uint8_t bufferSize,
   for (uint8_t i = 0; i < bufferSize; i++)
     SPI.transfer(((uint8_t*) buffer)[i]);
   unselect();
-
+  // Serial.print("Sending frame...");
   // no need to wait for transmit mode to be ready since its handled by the radio
   setMode(RF69_MODE_TX);
   uint32_t txStart = millis();
-  while (digitalRead(_interruptPin) == 0 && millis() - txStart < RF69_TX_LIMIT_MS); // wait for DIO0 to turn HIGH signalling transmission finish
+  while (digitalRead(_interruptPin) == 0 && millis() - txStart < RF69_TX_LIMIT_MS) { // wait for DIO0 to turn HIGH signalling transmission finish
+    yield();
+  }
   //while (readReg(REG_IRQFLAGS2) & RF_IRQFLAGS2_PACKETSENT == 0x00); // wait for ModeReady
+  //setMode(RF69_MODE_RX);
   setMode(RF69_MODE_STANDBY);
 }
 
@@ -440,7 +450,7 @@ void RFM69::writeReg(uint8_t addr, uint8_t value)
 void RFM69::select() {
   noInterrupts();
   // save current SPI settings
-  if !defined(ESP8266)
+  #if !defined(ESP8266)
     _SPCR = SPCR;
     _SPSR = SPSR;
   #endif
@@ -455,7 +465,7 @@ void RFM69::select() {
 void RFM69::unselect() {
   digitalWrite(_slaveSelectPin, HIGH);
   // restore SPI settings to what they were before talking to RFM69
-  if !defined(ESP8266)
+  #if !defined(ESP8266)
     SPCR = _SPCR;
     SPSR = _SPSR;
   #endif
@@ -493,7 +503,7 @@ void RFM69::setCS(uint8_t newSPISlaveSelect) {
 }
 
 //for debugging
-#define REGISTER_DETAIL 0
+#define REGISTER_DETAIL 1
 #if REGISTER_DETAIL
 // SERIAL PRINT
 // replace Serial.print("string") with SerialPrint("string")
